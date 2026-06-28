@@ -1,5 +1,5 @@
 // Recto Service Worker — v88 (cache propre + anti vieux-chunk)
-const CACHE = 'recto-v120';
+const CACHE = 'recto-v124';
 const SHELL = ['./', './index.html', './config.js', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
