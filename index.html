@@ -10,7 +10,39 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <script src="./config.js"></script>
-    <script type="module" crossorigin src="./assets/index-La0Nah-Q.js"></script>
+    <script>
+      /* Anti page blanche (v194).
+         Si le navigateur (ou un service worker en cache) sert un index.html qui
+         référence un bundle supprimé, le module échoue et l'écran reste blanc.
+         On le détecte, on purge service worker + caches, et on recharge UNE fois. */
+      (function () {
+        var KEY = "recto_selfheal";
+        window.addEventListener("error", function (e) {
+          var el = e.target;
+          if (!el || el.tagName !== "SCRIPT" || !el.src) return;
+          if (sessionStorage.getItem(KEY)) return; // déjà tenté : on évite la boucle
+          sessionStorage.setItem(KEY, "1");
+          var done = function () { location.reload(); };
+          var jobs = [];
+          if (navigator.serviceWorker) {
+            jobs.push(navigator.serviceWorker.getRegistrations()
+              .then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); })
+              .catch(function () {}));
+          }
+          if (window.caches) {
+            jobs.push(caches.keys()
+              .then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); })
+              .catch(function () {}));
+          }
+          Promise.all(jobs).then(done, done);
+        }, true);
+        window.addEventListener("load", function () {
+          // Chargement réussi : on réarme le garde-fou pour la prochaine fois.
+          setTimeout(function () { sessionStorage.removeItem(KEY); }, 3000);
+        });
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-CHqS6WTE.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-DbkMh9Hk.css">
   </head>
   <body>
