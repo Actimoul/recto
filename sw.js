@@ -1,5 +1,5 @@
 // Recto Service Worker — v88 (cache propre + anti vieux-chunk)
-const CACHE = 'recto-v194';
+const CACHE = 'recto-v195';
 const SHELL = ['./', './index.html', './config.js', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
@@ -13,6 +13,19 @@ self.addEventListener('activate', (e) => {
       .then(() => self.clients.claim())
   );
 });
+
+// v195 : un asset hashé absent du serveur = index.html périmé servi depuis le cache.
+// On purge tout et on se désinscrit ; le prochain chargement repart d'un serveur propre.
+let _destroying = false;
+function selfDestruct() {
+  if (_destroying) return;
+  _destroying = true;
+  caches.keys()
+    .then((ks) => Promise.all(ks.map((k) => caches.delete(k))))
+    .catch(() => {})
+    .then(() => self.registration.unregister())
+    .catch(() => {});
+}
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
@@ -47,19 +60,33 @@ self.addEventListener('fetch', (e) => {
   if (e.request.mode === 'navigate') {
     e.respondWith(
       fetch(e.request)
-        .then((r) => { caches.open(CACHE).then((c) => c.put('./index.html', r.clone())); return r; })
-        .catch(() => caches.match('./index.html'))
+        .then((r) => {
+          if (r && r.ok) caches.open(CACHE).then((c) => c.put('./index.html', r.clone())).catch(() => {});
+          return r || Response.error();
+        })
+        .catch(() => caches.match('./index.html').then((hit) => hit || Response.error()))
     );
     return;
   }
 
   // Assets hashés par Vite : réseau d'abord (évite de servir un vieux chunk en cache),
   // on met en cache la version fraîche, et on retombe sur le cache uniquement hors-ligne.
+  // v195 : ne jamais résoudre respondWith(undefined) — ça fait planter le SW ("erreur
+  // inattendue") et laisse une page blanche. Si un asset a disparu du serveur (404),
+  // c'est que l'index.html servi est périmé : le SW se saborde pour repartir propre.
   if (url.pathname.includes('/assets/')) {
     e.respondWith(
       fetch(e.request)
-        .then((r) => { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); return r; })
-        .catch(() => caches.match(e.request))
+        .then((r) => {
+          if (r && r.ok) {
+            const copy = r.clone();
+            caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+            return r;
+          }
+          if (r && r.status === 404) selfDestruct();
+          return r || Response.error();
+        })
+        .catch(() => caches.match(e.request).then((hit) => hit || Response.error()))
     );
     return;
   }
@@ -67,9 +94,11 @@ self.addEventListener('fetch', (e) => {
   // Reste : cache d'abord
   e.respondWith(
     caches.match(e.request).then((hit) => hit || fetch(e.request).then((r) => {
-      const copy = r.clone();
-      caches.open(CACHE).then((c) => c.put(e.request, copy));
-      return r;
-    }))
+      if (r && r.ok) {
+        const copy = r.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+      }
+      return r || Response.error();
+    })).catch(() => caches.match(e.request).then((hit) => hit || Response.error()))
   );
 });
