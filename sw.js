@@ -1,5 +1,5 @@
 // Recto Service Worker — v88 (cache propre + anti vieux-chunk)
-const CACHE = 'recto-v206';
+const CACHE = 'recto-v212';
 const SHELL = ['./', './index.html', './config.js', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
@@ -75,8 +75,12 @@ self.addEventListener('fetch', (e) => {
   // inattendue") et laisse une page blanche. Si un asset a disparu du serveur (404),
   // c'est que l'index.html servi est périmé : le SW se saborde pour repartir propre.
   if (url.pathname.includes('/assets/')) {
+    // v209 : CACHE D'ABORD. Les fichiers d'assets sont hachés par contenu
+    // (index-CVGnGcxJ.js…) : sous un nom donné, le contenu ne peut JAMAIS être
+    // périmé. Le cache est donc toujours juste, et les chargements deviennent
+    // instantanés. Un nouvel index.html référence de nouveaux noms → re-téléchargés.
     e.respondWith(
-      fetch(e.request)
+      caches.match(e.request).then((hit) => hit || fetch(e.request)
         .then((r) => {
           if (r && r.ok) {
             const copy = r.clone();
@@ -86,7 +90,7 @@ self.addEventListener('fetch', (e) => {
           if (r && r.status === 404) selfDestruct();
           return r || Response.error();
         })
-        .catch(() => caches.match(e.request).then((hit) => hit || Response.error()))
+        .catch(() => Response.error()))
     );
     return;
   }
